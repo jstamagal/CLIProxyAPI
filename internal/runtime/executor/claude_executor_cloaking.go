@@ -1993,10 +1993,6 @@ func upgradeClaudeCacheControlTTL(payload []byte, ttl string) []byte {
 	}
 
 	forEachClaudeCacheControlBlock(payload, upgrade)
-	// A top-level cache_control applies to the last cacheable block. When that
-	// block also carries a breakpoint, Anthropic requires both ttls to match, so
-	// the top-level marker takes the same ttl as the blocks.
-	upgrade("", gjson.ParseBytes(payload))
 	return payload
 }
 
@@ -2015,7 +2011,11 @@ func stripClaudeCacheControlTTL(payload []byte) []byte {
 		if !cacheControl.IsObject() || !cacheControl.Get("ttl").Exists() {
 			return
 		}
-		updated, errDel := sjson.DeleteBytes(payload, path+".cache_control.ttl")
+		key := "cache_control.ttl"
+		if path != "" {
+			key = path + "." + key
+		}
+		updated, errDel := sjson.DeleteBytes(payload, key)
 		if errDel != nil {
 			return
 		}
@@ -2027,7 +2027,8 @@ func stripClaudeCacheControlTTL(payload []byte) []byte {
 }
 
 // forEachClaudeCacheControlBlock walks every block that can carry cache_control
-// in Anthropic's evaluation order: tools, then system, then messages.
+// in Anthropic's evaluation order: tools, then system, then messages, and
+// finally the top-level marker on the last cacheable block.
 func forEachClaudeCacheControlBlock(payload []byte, visit func(path string, block gjson.Result)) {
 	if tools := gjson.GetBytes(payload, "tools"); tools.IsArray() {
 		tools.ForEach(func(idx, item gjson.Result) bool {
@@ -2054,6 +2055,7 @@ func forEachClaudeCacheControlBlock(payload []byte, visit func(path string, bloc
 			return true
 		})
 	}
+	visit("", gjson.ParseBytes(payload))
 }
 
 // isExplicitPromptCacheMode reports whether any of the candidate payloads
@@ -2181,7 +2183,10 @@ func normalizeCacheControlTTL(payload []byte) []byte {
 		if !seen5m {
 			return
 		}
-		ttlPath := path + ".cache_control.ttl"
+		ttlPath := "cache_control.ttl"
+		if path != "" {
+			ttlPath = path + "." + ttlPath
+		}
 		updated, errDel := sjson.DeleteBytes(payload, ttlPath)
 		if errDel != nil {
 			return
@@ -2190,36 +2195,7 @@ func normalizeCacheControlTTL(payload []byte) []byte {
 		modified = true
 	}
 
-	tools := gjson.GetBytes(payload, "tools")
-	if tools.IsArray() {
-		tools.ForEach(func(idx, item gjson.Result) bool {
-			processBlock(fmt.Sprintf("tools.%d", int(idx.Int())), item)
-			return true
-		})
-	}
-
-	system := gjson.GetBytes(payload, "system")
-	if system.IsArray() {
-		system.ForEach(func(idx, item gjson.Result) bool {
-			processBlock(fmt.Sprintf("system.%d", int(idx.Int())), item)
-			return true
-		})
-	}
-
-	messages := gjson.GetBytes(payload, "messages")
-	if messages.IsArray() {
-		messages.ForEach(func(msgIdx, msg gjson.Result) bool {
-			content := msg.Get("content")
-			if !content.IsArray() {
-				return true
-			}
-			content.ForEach(func(itemIdx, item gjson.Result) bool {
-				processBlock(fmt.Sprintf("messages.%d.content.%d", int(msgIdx.Int()), int(itemIdx.Int())), item)
-				return true
-			})
-			return true
-		})
-	}
+	forEachClaudeCacheControlBlock(payload, processBlock)
 
 	if !modified {
 		return original
