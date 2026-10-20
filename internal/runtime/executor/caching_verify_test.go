@@ -609,6 +609,19 @@ func TestUpgradeClaudeCacheControlTTL(t *testing.T) {
 		}
 	})
 
+	t.Run("Upgrades A Top-Level Marker With The Blocks", func(t *testing.T) {
+		input := []byte(`{"cache_control":{"type":"ephemeral"},` +
+			`"system":[{"type":"text","text":"s","cache_control":{"type":"ephemeral"}}],` +
+			`"messages":[{"role":"user","content":[{"type":"text","text":"a"}]}]}`)
+		output := upgradeClaudeCacheControlTTL(input, claudeCacheControlTTL1h)
+		if got := gjson.GetBytes(output, "cache_control.ttl").String(); got != "1h" {
+			t.Errorf("top-level cache_control.ttl = %q, want 1h to match the blocks. Output: %s", got, output)
+		}
+		if got := gjson.GetBytes(output, "system.0.cache_control.ttl").String(); got != "1h" {
+			t.Errorf("system.0.cache_control.ttl = %q, want 1h. Output: %s", got, output)
+		}
+	})
+
 	t.Run("Preserves Caller TTL And Is Idempotent", func(t *testing.T) {
 		input := []byte(`{"system":[{"type":"text","text":"s","cache_control":{"type":"ephemeral","ttl":"5m"}}]}`)
 		output := upgradeClaudeCacheControlTTL(input, claudeCacheControlTTL1h)

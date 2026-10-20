@@ -1981,7 +1981,11 @@ func upgradeClaudeCacheControlTTL(payload []byte, ttl string) []byte {
 			upgraded += `,"scope":` + scope.Raw
 		}
 		upgraded += "}"
-		updated, errSet := sjson.SetRawBytes(payload, path+".cache_control", []byte(upgraded))
+		key := "cache_control"
+		if path != "" {
+			key = path + ".cache_control"
+		}
+		updated, errSet := sjson.SetRawBytes(payload, key, []byte(upgraded))
 		if errSet != nil {
 			return
 		}
@@ -1989,6 +1993,10 @@ func upgradeClaudeCacheControlTTL(payload []byte, ttl string) []byte {
 	}
 
 	forEachClaudeCacheControlBlock(payload, upgrade)
+	// A top-level cache_control applies to the last cacheable block. When that
+	// block also carries a breakpoint, Anthropic requires both ttls to match, so
+	// the top-level marker takes the same ttl as the blocks.
+	upgrade("", gjson.ParseBytes(payload))
 	return payload
 }
 
