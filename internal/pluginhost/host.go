@@ -66,6 +66,7 @@ type Host struct {
 	loader                 pluginLoader
 	loaded                 map[string]*loadedPlugin
 	retired                map[string][]*loadedPlugin
+	requestInterceptors    map[string][]capabilityRecord
 	loading                map[string]*pluginLoadRequest
 	fused                  map[string]string
 	pluginFileVersions     map[string]string
@@ -100,6 +101,7 @@ func New() *Host {
 		loader:                 defaultPluginLoader(),
 		loaded:                 make(map[string]*loadedPlugin),
 		retired:                make(map[string][]*loadedPlugin),
+		requestInterceptors:    make(map[string][]capabilityRecord),
 		loading:                make(map[string]*pluginLoadRequest),
 		fused:                  make(map[string]string),
 		pluginFileVersions:     make(map[string]string),
@@ -833,6 +835,7 @@ func (h *Host) ShutdownAllContext(ctx context.Context) {
 	}
 	h.loaded = make(map[string]*loadedPlugin)
 	h.retired = make(map[string][]*loadedPlugin)
+	h.requestInterceptors = make(map[string][]capabilityRecord)
 	h.modelClientIDs = make(map[string]struct{})
 	h.executorModelClientIDs = make(map[string]struct{})
 	h.modelProviders = make(map[string]string)
@@ -1090,17 +1093,17 @@ func (h *Host) rollbackReplacement(lp *loadedPlugin, item runtimeItemConfig) (ca
 		return capabilityRecord{}, pluginFile{}, false
 	}
 	return capabilityRecord{
-			id:       lp.id,
-			path:     lp.path,
-			version:  lp.version,
-			priority: item.Priority,
-			meta:     plugin.Metadata,
-			plugin:   plugin,
-		}, pluginFile{
-			ID:      lp.id,
-			Path:    lp.path,
-			Version: lp.version,
-		}, true
+		id:       lp.id,
+		path:     lp.path,
+		version:  lp.version,
+		priority: item.Priority,
+		meta:     plugin.Metadata,
+		plugin:   plugin,
+	}, pluginFile{
+		ID:      lp.id,
+		Path:    lp.path,
+		Version: lp.version,
+	}, true
 }
 
 func (h *Host) callRegister(ctx context.Context, lp *loadedPlugin, item runtimeItemConfig) (pluginapi.Plugin, bool) {

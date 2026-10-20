@@ -41,9 +41,8 @@
 // with response steering, its later turns would reach upstream on a duplex
 // channel the request hooks never see. Use HTTP with scrubbing.
 //
-// Known limit: the restore state of a request lives in this library
-// instance. Replacing the plugin (a service restart) while a request is in
-// flight loses that state, and that reply keeps its placeholders.
+// Restore state lives in this library instance. The host keeps an in-flight
+// request's response and completion hooks on that instance across hot reloads.
 //
 // Detection, from bead js-y3c.11: known key shapes; .env NAME=value whose
 // name holds KEY, TOKEN, SECRET, PASSWORD, PASSWD, PASS or AUTH (a bare

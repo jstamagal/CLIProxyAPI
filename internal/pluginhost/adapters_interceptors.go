@@ -17,7 +17,7 @@ import (
 )
 
 func (h *Host) callRequestInterceptor(ctx context.Context, record capabilityRecord, method string, call func(context.Context, pluginapi.RequestInterceptRequest) (pluginapi.RequestInterceptResponse, error), req pluginapi.RequestInterceptRequest) (out pluginapi.RequestInterceptResponse, ok bool) {
-	if h == nil || call == nil || h.isPluginFused(record.id) || !h.recordCurrent(record) {
+	if h == nil || call == nil || h.isPluginFused(record.id) || !h.requestInterceptorCurrent(req.RequestID, record) {
 		return pluginapi.RequestInterceptResponse{}, false
 	}
 	defer func() {
@@ -36,7 +36,7 @@ func (h *Host) callRequestInterceptor(ctx context.Context, record capabilityReco
 }
 
 func (h *Host) callResponseInterceptor(ctx context.Context, record capabilityRecord, interceptor pluginapi.ResponseInterceptor, req pluginapi.ResponseInterceptRequest) (out pluginapi.ResponseInterceptResponse, ok bool) {
-	if h == nil || interceptor == nil || h.isPluginFused(record.id) || !h.recordCurrent(record) {
+	if h == nil || interceptor == nil || h.isPluginFused(record.id) || !h.requestInterceptorCurrent(req.RequestID, record) {
 		return pluginapi.ResponseInterceptResponse{}, false
 	}
 	defer func() {
@@ -55,7 +55,7 @@ func (h *Host) callResponseInterceptor(ctx context.Context, record capabilityRec
 }
 
 func (h *Host) callStreamChunkInterceptor(ctx context.Context, record capabilityRecord, interceptor pluginapi.StreamChunkInterceptor, req pluginapi.StreamChunkInterceptRequest) (out pluginapi.StreamChunkInterceptResponse, ok bool) {
-	if h == nil || interceptor == nil || h.isPluginFused(record.id) || !h.recordCurrent(record) {
+	if h == nil || interceptor == nil || h.isPluginFused(record.id) || !h.requestInterceptorCurrent(req.RequestID, record) {
 		return pluginapi.StreamChunkInterceptResponse{}, false
 	}
 	defer func() {
@@ -115,11 +115,12 @@ func (h *Host) interceptRequest(ctx context.Context, req pluginapi.RequestInterc
 	currentBase := req.Body
 	bodyModified := false
 
-	for _, record := range h.activeRecords() {
+	for _, record := range h.requestInterceptorRecords(req.RequestID) {
 		interceptor := record.plugin.Capabilities.RequestInterceptor
 		if h.isPluginFused(record.id) || interceptor == nil || record.id == skipPluginID {
 			continue
 		}
+		h.rememberRequestInterceptor(req.RequestID, record)
 		nextReq := req
 		nextReq.Headers = cloneHeader(current.Headers)
 		if len(currentBase) > 0 {
@@ -217,9 +218,15 @@ func (h *Host) CompleteRequestExcept(ctx context.Context, completion pluginapi.R
 		ctx = context.WithoutCancel(ctx)
 	}
 	skipPluginID = strings.TrimSpace(skipPluginID)
-	for _, record := range h.activeRecords() {
+	records := h.requestInterceptorRecords(completion.RequestID)
+	defer func() {
+		h.mu.Lock()
+		delete(h.requestInterceptors, completion.RequestID)
+		h.mu.Unlock()
+	}()
+	for _, record := range records {
 		plugin := record.plugin.Capabilities.RequestLifecyclePlugin
-		if h.isPluginFused(record.id) || plugin == nil || record.id == skipPluginID || !h.recordCurrent(record) {
+		if h.isPluginFused(record.id) || plugin == nil || record.id == skipPluginID || !h.requestInterceptorCurrent(completion.RequestID, record) {
 			continue
 		}
 		next := completion
@@ -247,7 +254,7 @@ func (h *Host) InterceptResponseExcept(ctx context.Context, req pluginapi.Respon
 		Body:    bytes.Clone(req.Body),
 	}
 	skipPluginID = strings.TrimSpace(skipPluginID)
-	for _, record := range h.activeRecords() {
+	for _, record := range h.requestInterceptorRecords(req.RequestID) {
 		interceptor := record.plugin.Capabilities.ResponseInterceptor
 		if h.isPluginFused(record.id) || interceptor == nil || record.id == skipPluginID {
 			continue
@@ -279,7 +286,7 @@ func (h *Host) InterceptStreamChunkExcept(ctx context.Context, req pluginapi.Str
 		Body:    bytes.Clone(req.Body),
 	}
 	skipPluginID = strings.TrimSpace(skipPluginID)
-	for _, record := range h.activeRecords() {
+	for _, record := range h.requestInterceptorRecords(req.RequestID) {
 		interceptor := record.plugin.Capabilities.StreamChunkInterceptor
 		if h.isPluginFused(record.id) || interceptor == nil || current.DropChunk || record.id == skipPluginID {
 			continue
