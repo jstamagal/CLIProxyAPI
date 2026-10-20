@@ -79,11 +79,11 @@ var keyShapes = []*regexp.Regexp{
 }
 
 // envAssignment is a .env style NAME=value whose name holds KEY, TOKEN,
-// SECRET, PASSWORD, PASSWD, PASS or AUTH. The value is group 2 (double
+// SECRET, PASSWORD, PASSWD, PASS or AUTH, case-insensitively. The value is group 2 (double
 // quoted), 3 (single quoted) or 4 (bare). A quoted value may span lines and
 // runs to the first quote not escaped by a backslash. A bare value runs to
 // the end of the line; dotenvValue cuts its comment.
-var envAssignment = regexp.MustCompile(`(?:^|[^A-Za-z0-9_])([A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASS|AUTH)[A-Za-z0-9_]*)[ \t]*=[ \t]*(?:"((?:[^"\\]|\\[\s\S])+)"|'((?:[^'\\]|\\[\s\S])+)'|([^\n]*))`)
+var envAssignment = regexp.MustCompile(`(?:^|[^A-Za-z0-9_])([A-Za-z0-9_]*(?i:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASS|AUTH)[A-Za-z0-9_]*)[ \t]*=[ \t]*(?:"((?:[^"\\]|\\[\s\S])+)"|'((?:[^'\\]|\\[\s\S])+)'|([^\n]*))`)
 
 // envComment starts a comment in a bare .env value: # after whitespace.
 var envComment = regexp.MustCompile(`[ \t]#`)
